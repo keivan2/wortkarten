@@ -28,6 +28,7 @@ camera ──► motion check ──► card held still? ──► photo ──�
    (`edge-tts`). It saves each phrase as an MP3 in `cache/`, so repeated words play instantly.
 4. **`main.py`** runs the loop, says „Super!" right away as feedback, and appends every
    recognised word to `gelernte_woerter.jsonl`. That log can feed a quiz mode later.
+   Every photo is also saved to `captures/<date>/` for review (see [Reviewing the photos](#reviewing-the-photos)).
 
 | File | Purpose |
 |---|---|
@@ -129,6 +130,7 @@ GEMINI_API_KEY=your-key-here
 # WK_VOICE_RATE=-15%
 # WK_AUDIO_DEVICE=
 # WK_CAMERA_TUNING=ov5647_noir.json
+# WK_SAVE_CAPTURES=1
 # WK_MOTION_THRESHOLD=12
 # WK_STILL_THRESHOLD=4
 # WK_STILL_FRAMES=4
@@ -177,6 +179,42 @@ sudo systemctl enable --now wortkarten
 | Words learned so far | `cat ~/wortkarten/gelernte_woerter.jsonl` |
 | Update the code | `cd ~/wortkarten && git pull && ./venv/bin/pip install -r requirements.txt && sudo systemctl restart wortkarten` |
 
+### Reviewing the photos
+
+Every photo the camera takes of a card is saved on the Pi, named with the time and what was
+recognised:
+
+```
+~/wortkarten/captures/
+└── 2026-11-27/
+    ├── 093512_Kuh.jpg
+    ├── 093540_Apfel.jpg
+    ├── 093611_unbekannt.jpg     ← Gemini couldn't tell what it was
+    └── 093702_fehler.jpg        ← no internet / Gemini error
+```
+
+Each entry in `gelernte_woerter.jsonl` also has a `"bild"` field pointing to its photo.
+
+Copy the photos to your computer to look through and sort them:
+
+```bash
+rsync -av keivan@192.168.50.187:wortkarten/captures/ ~/Pictures/wortkarten-captures/
+```
+
+The photos are never uploaded to GitHub (`captures/` is git-ignored). Each one is about
+75 KB, so a full card is a long way off. To turn saving off, set `WK_SAVE_CAPTURES=0`.
+
+### Taking a test picture
+
+The service keeps the camera busy, so stop it briefly:
+
+```bash
+sudo systemctl stop wortkarten
+rpicam-still -n -t 1500 --width 1024 --height 768 \
+  --tuning-file /usr/share/libcamera/ipa/rpi/vc4/ov5647_noir.json -o ~/snapshot.jpg
+sudo systemctl start wortkarten
+```
+
 **Tips for your child:** hold the card 20–40 cm from the camera, in good light, and keep it
 still for about a second. Take it away before showing the next one.
 
@@ -195,6 +233,7 @@ You can set all of these in `.env`. Restart the service after changing them.
 | `WK_VOICE_RATE` | `-15%` | Speaking speed; slightly slower suits kids |
 | `WK_AUDIO_DEVICE` | *(system default)* | ALSA device for mpg123, e.g. `hw:0,0` |
 | `WK_CAMERA_TUNING` | `ov5647_noir.json` | Camera colour tuning. Leave it empty for a standard (non-IR) camera |
+| `WK_SAVE_CAPTURES` | `1` | Save every card photo to `captures/`. Set it to `0` to turn this off |
 | `WK_MOTION_THRESHOLD` | `12` | How different from the empty scene counts as "a card is there". Raise it if the reader triggers by itself |
 | `WK_STILL_THRESHOLD` | `4` | How steady the card must be held. Raise it if it never triggers |
 | `WK_STILL_FRAMES` | `4` | Number of steady frames (about 0.15 s each) before the photo is taken |

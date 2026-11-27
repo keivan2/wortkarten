@@ -36,5 +36,9 @@ MOTION_THRESHOLD = float(os.environ.get("WK_MOTION_THRESHOLD", "12"))
 STILL_THRESHOLD = float(os.environ.get("WK_STILL_THRESHOLD", "4"))
 STILL_FRAMES = int(os.environ.get("WK_STILL_FRAMES", "4"))
 
+# Every captured card photo is kept here for later review (set WK_SAVE_CAPTURES=0 to disable).
+SAVE_CAPTURES = os.environ.get("WK_SAVE_CAPTURES", "1") != "0"
+CAPTURES_DIR = BASE_DIR / "captures"
+
 CACHE_DIR = BASE_DIR / "cache"
 LOG_FILE = BASE_DIR / "gelernte_woerter.jsonl"

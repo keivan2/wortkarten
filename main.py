@@ -7,7 +7,9 @@ import argparse
 import json
 import logging
 import random
+import re
 import time
+from pathlib import Path
 
 import config
 import speaker
@@ -19,7 +21,24 @@ PRAISE = ["Super!", "Toll!", "Prima!", "Sehr gut!"]
 UNKNOWN = "Hmm, das erkenne ich nicht. Halt die Karte bitte still vor die Kamera."
 
 
-def announce(result: Result | None) -> None:
+def save_capture(jpeg: bytes, label: str) -> Path | None:
+    """Keep the photo for later review: captures/2026-11-27/093512_Kuh.jpg"""
+    if not config.SAVE_CAPTURES:
+        return None
+    safe = re.sub(r"[^\wäöüÄÖÜß-]+", "_", label).strip("_") or "unbekannt"
+    folder = config.CAPTURES_DIR / time.strftime("%Y-%m-%d")
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / f"{time.strftime('%H%M%S')}_{safe}.jpg"
+        path.write_bytes(jpeg)
+    except OSError:
+        log.exception("Could not save capture")
+        return None
+    log.info("Saved %s", path.relative_to(config.BASE_DIR))
+    return path
+
+
+def announce(result: Result | None, image: Path | None = None) -> None:
     if result is None:
         speaker.say(UNKNOWN)
         return
@@ -27,11 +46,14 @@ def announce(result: Result | None) -> None:
     speaker.say(f"Das ist {result.phrase}.")
     time.sleep(0.4)
     speaker.say(f"{result.phrase}!")  # repeat the word on its own
+    entry = {
+        "zeit": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "wort": result.word, "artikel": result.article, "englisch": result.english,
+    }
+    if image:
+        entry["bild"] = str(image.relative_to(config.BASE_DIR))
     with config.LOG_FILE.open("a") as f:
-        f.write(json.dumps({
-            "zeit": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "wort": result.word, "artikel": result.article, "englisch": result.english,
-        }, ensure_ascii=False) + "\n")
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
 def run_image(path: str) -> None:
@@ -53,10 +75,11 @@ def run_camera() -> None:
                 result = recognizer.identify(jpeg)
             except Exception:
                 log.exception("Recognition failed")
+                save_capture(jpeg, "fehler")
                 speaker.say("Oh, ich habe gerade keine Verbindung zum Internet.")
-                result = None
             else:
-                announce(result)
+                image = save_capture(jpeg, result.word if result else "unbekannt")
+                announce(result, image)
             watcher.wait_until_removed()
     finally:
         watcher.close()
