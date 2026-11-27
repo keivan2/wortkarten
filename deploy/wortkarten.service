@@ -1,0 +1,14 @@
+[Unit]
+Description=Wortkarten - German picture-card reader
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+User=keivan
+WorkingDirectory=/home/keivan/wortkarten
+ExecStart=/home/keivan/wortkarten/venv/bin/python main.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

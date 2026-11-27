@@ -1,0 +1,12 @@
+# Secrets - never commit the real API key
+.env
+
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Runtime data created on the Pi
+cache/
+gelernte_woerter.jsonl
+testbilder/

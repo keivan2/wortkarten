@@ -1,0 +1,5 @@
+# Installed with pip into the venv.
+# picamera2 and numpy come from apt (python3-picamera2) and are used through
+# --system-site-packages, because they are tied to the Pi's libcamera build.
+google-genai>=3.6,<4
+edge-tts>=7.3,<8
