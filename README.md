@@ -29,8 +29,10 @@ There are two modes (`WK_MODE`):
 1. **`camera.py`** only watches a **detection zone** in the middle of the picture (`WK_ZONE`).
    In auto mode a card counts when it covers at least 35% of the zone (`WK_MIN_COVER`), which
    means it's held close, and stays still for about 0.6 s. Movement in the background or at
-   the edges is ignored. The photo sent to Gemini is cropped to the zone, and each card is read
-   only once until it's taken away.
+   the edges is ignored. In auto mode the photo sent to Gemini is cropped to the zone, and each
+   card is read only once until it's taken away. In button mode Gemini gets the whole picture,
+   so a card held close (about 20 cm) isn't cut off. Before every photo the exposure is adjusted
+   for the card itself, so a white card doesn't burn out and its text stays readable.
 2. **`recognizer.py`** sends the photo to Gemini. Gemini **reads the name printed on the card
    first** and only falls back to the picture when no text is readable. That matters for cards
    that look alike, such as colour blobs labelled "Rot", "Blau", "Grün". Rotated cards work, and
@@ -165,7 +167,7 @@ GEMINI_API_KEY=your-key-here
 # WK_BUTTON_TOPICS=zigbee2mqtt/knopf
 # WK_MQTT_HOST=localhost
 # WK_MQTT_PORT=1883
-# WK_ZONE=0.2,0.15,0.8,0.85
+# WK_ZONE=0.1,0.05,0.9,0.95
 # WK_MIN_COVER=0.35
 # WK_PIXEL_DIFF=25
 # WK_STILL_THRESHOLD=4
@@ -399,7 +401,7 @@ You can set all of these in `.env`. Restart the service after changing them.
 | `WK_MODE` | `auto` | `auto` reads a card when it's held still; `button` reads only when the button is pressed |
 | `WK_BUTTON_TOPICS` | `zigbee2mqtt/knopf` | MQTT topics of the button(s), comma-separated |
 | `WK_MQTT_HOST` / `WK_MQTT_PORT` | `localhost` / `1883` | MQTT broker (mosquitto) |
-| `WK_ZONE` | `0.2,0.15,0.8,0.85` | Detection zone: left, top, right, bottom as fractions of the picture. Check it with `--snapshot` |
+| `WK_ZONE` | `0.1,0.05,0.9,0.95` | Detection zone: left, top, right, bottom as fractions of the picture. Check it with `--snapshot` |
 | `WK_MIN_COVER` | `0.35` | How much of the zone a card must cover (auto mode). Raise it if the background still triggers, lower it if cards are ignored. The log shows "Ignored: something covers X%" |
 | `WK_PIXEL_DIFF` | `25` | How different from the empty background a pixel must be to count as covered |
 | `WK_STILL_THRESHOLD` | `4` | How steady the card must be held. Raise it if it never triggers |

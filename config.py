@@ -50,7 +50,7 @@ TARGET_BRIGHTNESS = float(os.environ.get("WK_TARGET_BRIGHTNESS", "110"))
 
 # Card detection (tuned on the low-res grey preview, values 0-255)
 # Only this box of the picture is watched: left, top, right, bottom as fractions 0-1.
-ZONE = tuple(float(v) for v in os.environ.get("WK_ZONE", "0.2,0.15,0.8,0.85").split(","))
+ZONE = tuple(float(v) for v in os.environ.get("WK_ZONE", "0.1,0.05,0.9,0.95").split(","))
 if len(ZONE) != 4 or not (0 <= ZONE[0] < ZONE[2] <= 1 and 0 <= ZONE[1] < ZONE[3] <= 1):
     raise ValueError(f"WK_ZONE must be 'left,top,right,bottom' between 0 and 1, got {ZONE}")
 # A card must cover at least this fraction of the zone (= held close to the camera).

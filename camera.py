@@ -102,9 +102,36 @@ class CardWatcher:
         img.save(buf, format="JPEG", quality=90)
         return buf.getvalue()
 
-    def photo(self) -> bytes:
-        """Photo of the zone right now (button mode)."""
-        return self._jpeg()
+    def _expose_for_card(self) -> None:
+        """Re-expose for the card itself just before the photo. A white card held close is
+        much brighter than the room, so with the room's exposure it burns out to pure white
+        and the printed name disappears. Aim for the brightest parts (the paper) to sit just
+        below white."""
+        for _ in range(4):
+            frame = self.cam.capture_array("lores")[: LORES[1], : LORES[0]]
+            bright = float(np.percentile(frame, 98))
+            if bright > 245:      # burnt out: we don't know how bright, so step down firmly
+                factor = 0.55
+            elif bright < 190:    # dim: brighten toward ~230
+                factor = min(230 / max(bright, 1.0), 2.0)
+            else:
+                break
+            new = min(max(self.light * factor, 100.0), MAX_EXPOSURE_US * MAX_GAIN)
+            if abs(new - self.light) < 1:
+                break             # at a limit
+            self.light = new
+            self._apply_light()
+            log.debug("Card exposure: brightest parts %.0f -> light %.0f", bright, self.light)
+
+    def photo(self, crop: bool = True) -> bytes:
+        """Photo exposed for the card. crop=False sends the whole picture (button mode)."""
+        room_light = self.light
+        self._expose_for_card()
+        jpeg = self._jpeg(crop=crop)
+        if self.light != room_light:  # back to the room's exposure for motion detection
+            self.light = room_light
+            self._apply_light()
+        return jpeg
 
     def adjust_exposure(self) -> None:
         """Call every few seconds while idle in button mode to follow the light."""
@@ -146,7 +173,7 @@ class CardWatcher:
             still = still + 1 if change_vs_prev < config.STILL_THRESHOLD else 0
             if still >= config.STILL_FRAMES:
                 log.info("Card detected (covers %.0f%% of the zone)", cover * 100)
-                return self._jpeg()
+                return self.photo()
 
     def wait_until_removed(self, timeout: float = 20.0) -> None:
         """Wait until the zone is empty again, so one card is only read once."""

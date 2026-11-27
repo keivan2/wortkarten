@@ -120,7 +120,7 @@ def run_button(recognizer: Recognizer, watcher) -> None:
                 continue
             press = buttons.presses
             speaker.resume()
-            jpeg = watcher.photo()
+            jpeg = watcher.photo(crop=False)  # whole picture: the card may stick out of the zone
             try:
                 result, image = recognise(recognizer, jpeg)
             except Exception:
