@@ -13,14 +13,24 @@ the device. Any card works: animals, fruit, vehicles, toys, and so on.
 ## How it works
 
 ```
-camera ──► motion check ──► card held still? ──► photo ──► Gemini ──► "die Kuh"
-                                                                         │
-                         speaker ◄── mpg123 ◄── cached MP3 ◄── edge-tts ◄┘
+ auto mode:   card held still in the zone ─┐
+ button mode: Zigbee button pressed ───────┴─► photo ──► Gemini ──► "die Kuh"
+                                                                       │
+                       speaker ◄── mpg123 ◄── cached MP3 ◄── edge-tts ◄┘
 ```
 
-1. **`camera.py`** compares small grey preview frames with an empty background. When something
-   new appears and holds still for about 0.6 s, it takes a 1024×768 photo. It then waits until
-   the card is removed, so each card is read only once.
+There are two modes (`WK_MODE`):
+
+- **`auto`** (default): the camera reads a card as soon as one is held still in front of it.
+- **`button`**: nothing happens until the button is pressed. Then it takes a photo right away
+  and says the word. Pressing again cuts off whatever is being said and reads the card that's
+  there now. See [Zigbee button](#zigbee-button).
+
+1. **`camera.py`** only watches a **detection zone** in the middle of the picture (`WK_ZONE`).
+   In auto mode a card counts when it covers at least 35% of the zone (`WK_MIN_COVER`), which
+   means it's held close, and stays still for about 0.6 s. Movement in the background or at
+   the edges is ignored. The photo sent to Gemini is cropped to the zone, and each card is read
+   only once until it's taken away.
 2. **`recognizer.py`** sends the photo to Gemini. Gemini **reads the name printed on the card
    first** and only falls back to the picture when no text is readable. That matters for cards
    that look alike, such as colour blobs labelled "Rot", "Blau", "Grün". Rotated cards work, and
@@ -30,14 +40,17 @@ camera ──► motion check ──► card held still? ──► photo ──�
    If one model is busy, the next one in the list is tried.
 3. **`speaker.py`** turns the text into German speech with Microsoft Edge's free online voices
    (`edge-tts`). It saves each phrase as an MP3 in `cache/`, so repeated words play instantly.
-4. **`main.py`** runs the loop, says „Super!" right away as feedback, and appends every
-   recognised word to `gelernte_woerter.jsonl`. That log can feed a quiz mode later.
+4. **`main.py`** runs the loop and appends every recognised word to `gelernte_woerter.jsonl`.
+   That log can feed a quiz mode later. If Gemini sees **no card** in the photo, the Pi stays
+   silent in auto mode, because something else moved in front of the camera. In button mode it
+   says „Ich sehe keine Karte …".
    Every photo is also saved to `captures/<date>/` for review (see [Reviewing the photos](#reviewing-the-photos)).
 
 | File | Purpose |
 |---|---|
-| `main.py` | Entry point and main loop; `--image` test mode |
-| `camera.py` | Card detection and photo capture (Picamera2) |
+| `main.py` | Entry point, auto and button loops; `--image` and `--snapshot` test modes |
+| `camera.py` | Detection zone, card detection, own auto-exposure, photo capture (Picamera2) |
+| `button.py` | Listens for button presses over MQTT (from zigbee2mqtt) |
 | `recognizer.py` | Gemini image recognition |
 | `speaker.py` | German TTS with an MP3 cache |
 | `config.py` | All settings, read from `.env` or environment variables |
@@ -50,6 +63,8 @@ camera ──► motion check ──► card held still? ──► photo ──�
 - **Raspberry Pi 3B+.** Other Pis should work too.
 - **OV5647 camera** on the CSI ribbon. Ours is a third-party 5 MP IR-CUT night-vision model.
 - **Speaker** on the 3.5 mm headphone jack. Bluetooth is planned.
+- **Optional: Zigbee button.** We use a Tuya battery "scene switch" button with a USB Zigbee
+  dongle (ours shows up as a CH340 serial device, `/dev/ttyUSB0`).
 - **Internet connection** (Wi-Fi or Ethernet).
 
 ### Connecting the camera (Pi 3B+)
@@ -136,7 +151,13 @@ GEMINI_API_KEY=your-key-here
 # WK_CAMERA_TUNING=ov5647_noir.json
 # WK_TARGET_BRIGHTNESS=110
 # WK_SAVE_CAPTURES=1
-# WK_MOTION_THRESHOLD=12
+# WK_MODE=auto
+# WK_BUTTON_TOPICS=zigbee2mqtt/knopf
+# WK_MQTT_HOST=localhost
+# WK_MQTT_PORT=1883
+# WK_ZONE=0.2,0.15,0.8,0.85
+# WK_MIN_COVER=0.35
+# WK_PIXEL_DIFF=25
 # WK_STILL_THRESHOLD=4
 # WK_STILL_FRAMES=4
 ```
@@ -211,17 +232,54 @@ The photos are never uploaded to GitHub (`captures/` is git-ignored). Each one i
 
 ### Taking a test picture
 
-The service keeps the camera busy, so stop it briefly:
+The service keeps the camera busy, so stop it briefly. The snapshot shows the full camera
+view with the **detection zone drawn in red**, which is handy for aiming the camera:
 
 ```bash
 sudo systemctl stop wortkarten
-rpicam-still -n -t 1500 --width 1024 --height 768 --shutter 15000 --gain 1.5 \
-  --tuning-file /usr/share/libcamera/ipa/rpi/vc4/ov5647_noir.json -o ~/snapshot.jpg
+cd ~/wortkarten && ./venv/bin/python main.py --snapshot ~/snapshot.jpg
 sudo systemctl start wortkarten
 ```
 
-**Tips for your child:** hold the card 20–40 cm from the camera, in good light, and keep it
-still for about a second. Take it away before showing the next one.
+**Tips for your child:** hold the card 25–35 cm from the camera so it fills most of the red
+zone, in good light, and keep it still for about a second. Tilt glossy cards slightly if a
+lamp reflects on the text. In auto mode, take each card away before showing the next one.
+When the service starts, keep the zone empty: it takes whatever is in view as the empty
+background.
+
+### Zigbee button
+
+In button mode (`WK_MODE=button`), the Pi reads the card only when the button is pressed.
+The chain is:
+
+```
+Zigbee button ──► USB dongle ──► zigbee2mqtt ──► mosquitto (MQTT) ──► button.py
+```
+
+zigbee2mqtt publishes each press as `{"action": "single"}` (or `double` / `hold`) on
+`zigbee2mqtt/<button name>`. Any message with an `action` counts as a press, while battery
+and signal updates are ignored.
+
+**Setup:**
+
+1. Install the MQTT broker and Node.js:
+   `sudo apt install -y mosquitto mosquitto-clients nodejs npm`
+2. Install zigbee2mqtt, following the
+   [official Linux guide](https://www.zigbee2mqtt.io/guide/installation/01_linux.html), into
+   `/opt/zigbee2mqtt`. In its `data/configuration.yaml`, set the serial port to
+   `/dev/serial/by-id/…` (find it with `ls /dev/serial/by-id/`), set the adapter type that
+   matches your dongle (`zstack` for TI chips, `ember` for Silicon Labs chips), and allow joining.
+3. Pair the button: put it in pairing mode, usually by holding its button for about 5 s until
+   the LED blinks. Then rename it to **`knopf`** in zigbee2mqtt, or set `WK_BUTTON_TOPICS` to
+   its name.
+4. Check that presses arrive: `mosquitto_sub -t 'zigbee2mqtt/knopf' -v`, then press the button.
+5. Set `WK_MODE=button` in `.env` and run `sudo systemctl restart wortkarten`.
+
+To test button mode without the button, fake a press:
+
+```bash
+mosquitto_pub -t zigbee2mqtt/knopf -m '{"action":"single"}'
+```
 
 ---
 
@@ -240,7 +298,12 @@ You can set all of these in `.env`. Restart the service after changing them.
 | `WK_CAMERA_TUNING` | `ov5647_noir.json` | Camera colour tuning. Leave it empty for a standard (non-IR) camera |
 | `WK_TARGET_BRIGHTNESS` | `110` | Average brightness (0–255) that the app's own auto-exposure aims for. Lower it if pictures look washed out |
 | `WK_SAVE_CAPTURES` | `1` | Save every card photo to `captures/`. Set it to `0` to turn this off |
-| `WK_MOTION_THRESHOLD` | `12` | How different from the empty scene counts as "a card is there". Raise it if the reader triggers by itself |
+| `WK_MODE` | `auto` | `auto` reads a card when it's held still; `button` reads only when the button is pressed |
+| `WK_BUTTON_TOPICS` | `zigbee2mqtt/knopf` | MQTT topics of the button(s), comma-separated |
+| `WK_MQTT_HOST` / `WK_MQTT_PORT` | `localhost` / `1883` | MQTT broker (mosquitto) |
+| `WK_ZONE` | `0.2,0.15,0.8,0.85` | Detection zone: left, top, right, bottom as fractions of the picture. Check it with `--snapshot` |
+| `WK_MIN_COVER` | `0.35` | How much of the zone a card must cover (auto mode). Raise it if the background still triggers, lower it if cards are ignored. The log shows "Ignored: something covers X%" |
+| `WK_PIXEL_DIFF` | `25` | How different from the empty background a pixel must be to count as covered |
 | `WK_STILL_THRESHOLD` | `4` | How steady the card must be held. Raise it if it never triggers |
 | `WK_STILL_FRAMES` | `4` | Number of steady frames (about 0.15 s each) before the photo is taken |
 
@@ -257,7 +320,9 @@ You can set all of these in `.env`. Restart the service after changing them.
 | It hangs or says „keine Verbindung" | No internet, or every Gemini model is busy (HTTP 503). Check `journalctl -u wortkarten`. Calls time out after 15 s. |
 | `404 … no longer available` | Google retired a model. List the current ones and update `GEMINI_MODELS`. |
 | It says the wrong word | Improve the light, hold the card closer and flatter, and avoid a busy background. |
-| It triggers with no card | Lighting is changing (sun, lamps). Raise `WK_MOTION_THRESHOLD`. |
+| It triggers with no card | Usually harmless: Gemini sees no card and the Pi stays quiet (the photo is saved as `…_keinekarte.jpg`). If it happens often, raise `WK_MIN_COVER` or shrink `WK_ZONE`. |
+| It ignores the card | The card is too far away or not inside the zone. Check with `--snapshot`, look for "Ignored: … covers X%" in the log, and lower `WK_MIN_COVER` if needed. |
+| The button does nothing | Run `mosquitto_sub -t 'zigbee2mqtt/#' -v` and press it. If nothing appears, it's a zigbee2mqtt or pairing problem. If messages appear on a different topic, set `WK_BUTTON_TOPICS`. Also check `WK_MODE=button`. |
 | No sound | `alsamixer` (volume), `aplay -l` (devices), `WK_AUDIO_DEVICE`. |
 
 ---
@@ -271,6 +336,8 @@ You can set all of these in `.env`. Restart the service after changing them.
 
 ## Roadmap
 
+- [x] Detection zone, plus staying quiet when there's no card
+- [x] Button mode (Zigbee via zigbee2mqtt / MQTT)
 - [ ] Bluetooth speaker
 - [ ] Quiz mode („Wie macht die Kuh?") using the words in `gelernte_woerter.jsonl`
 - [ ] Listening to the child's spoken answer (speech-to-text)

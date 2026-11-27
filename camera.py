@@ -5,6 +5,7 @@ import time
 
 import numpy as np
 from picamera2 import Picamera2
+from PIL import ImageDraw
 
 import config
 
@@ -14,6 +15,8 @@ LORES = (160, 120)
 MAX_EXPOSURE_US = 20000  # longer than this blurs a moving hand; use gain instead
 MAX_GAIN = 8.0
 EXPOSURE_CHECK_S = 2.0   # how often to re-check brightness while nobody shows a card
+EMPTY_COVER = 0.08       # below this fraction of changed pixels the zone counts as empty
+CROP_MARGIN = 0.08       # extra border around the zone in the photo sent to Gemini
 
 
 class CardWatcher:
@@ -69,31 +72,62 @@ class CardWatcher:
         return True
 
     def _grey(self) -> np.ndarray:
-        frame = self.cam.capture_array("lores")
-        return frame[: LORES[1], : LORES[0]].astype(np.int16)  # Y plane only
+        """Grey preview of the detection zone only."""
+        frame = self.cam.capture_array("lores")[: LORES[1], : LORES[0]]  # Y plane
+        x0, y0, x1, y1 = config.ZONE
+        w, h = LORES
+        return frame[int(y0 * h):int(y1 * h), int(x0 * w):int(x1 * w)].astype(np.int16)
 
     @staticmethod
     def _diff(a: np.ndarray, b: np.ndarray) -> float:
         return float(np.mean(np.abs(a - b)))
 
-    def _jpeg(self) -> bytes:
+    def _cover(self, cur: np.ndarray) -> float:
+        """Fraction of the zone that differs clearly from the empty background."""
+        return float(np.mean(np.abs(cur - self.background) > config.PIXEL_DIFF))
+
+    def _jpeg(self, crop: bool = True, outline: bool = False) -> bytes:
+        """Photo of the zone (plus a margin, in case the card sticks out a little)."""
+        img = self.cam.capture_image("main").convert("RGB")
+        W, H = img.size
+        x0, y0, x1, y1 = config.ZONE
+        if outline:
+            ImageDraw.Draw(img).rectangle(
+                (x0 * W, y0 * H, x1 * W, y1 * H), outline=(255, 0, 0), width=4)
+        if crop:
+            m = CROP_MARGIN
+            img = img.crop((int(max(x0 - m, 0) * W), int(max(y0 - m, 0) * H),
+                            int(min(x1 + m, 1) * W), int(min(y1 + m, 1) * H)))
         buf = io.BytesIO()
-        self.cam.capture_file(buf, format="jpeg")
+        img.save(buf, format="JPEG", quality=90)
         return buf.getvalue()
 
+    def photo(self) -> bytes:
+        """Photo of the zone right now (button mode)."""
+        return self._jpeg()
+
+    def adjust_exposure(self) -> None:
+        """Call every few seconds while idle in button mode to follow the light."""
+        self._correct_exposure(tolerance=35)
+
+    def snapshot(self) -> bytes:
+        """Full picture with the detection zone drawn in red, for aiming the camera."""
+        return self._jpeg(crop=False, outline=True)
+
     def wait_for_card(self) -> bytes:
-        """Block until something new is held still in front of the camera."""
+        """Block until something big (close to the camera) is held still in the zone."""
         still = 0
         prev = self._grey()
         next_check = time.time() + EXPOSURE_CHECK_S
+        next_note = 0.0
         while True:
             time.sleep(0.15)
             cur = self._grey()
-            change_vs_bg = self._diff(cur, self.background)
+            cover = self._cover(cur)
             change_vs_prev = self._diff(cur, prev)
             prev = cur
-            if change_vs_bg < config.MOTION_THRESHOLD:
-                # Empty scene: slowly follow lighting changes.
+            if cover < EMPTY_COVER:
+                # Empty zone: slowly follow lighting changes.
                 self.background = (self.background * 0.9 + cur * 0.1).astype(np.int16)
                 still = 0
                 if time.time() >= next_check:
@@ -102,19 +136,26 @@ class CardWatcher:
                         # The picture changed because we changed it, not because of a card.
                         self.background = prev = self._grey()
                 continue
+            if cover < config.MIN_COVER:
+                still = 0  # something small or far away (a person walking by): ignore
+                if time.time() >= next_note:  # helps tuning WK_MIN_COVER from the log
+                    next_note = time.time() + 3
+                    log.info("Ignored: something covers %.0f%% of the zone (needs %.0f%%)",
+                             cover * 100, config.MIN_COVER * 100)
+                continue
             still = still + 1 if change_vs_prev < config.STILL_THRESHOLD else 0
             if still >= config.STILL_FRAMES:
-                log.info("Card detected (change %.1f)", change_vs_bg)
+                log.info("Card detected (covers %.0f%% of the zone)", cover * 100)
                 return self._jpeg()
 
     def wait_until_removed(self, timeout: float = 20.0) -> None:
-        """Wait until the scene is back to empty, so one card is only read once."""
+        """Wait until the zone is empty again, so one card is only read once."""
         end = time.time() + timeout
         while time.time() < end:
-            if self._diff(self._grey(), self.background) < config.MOTION_THRESHOLD:
+            if self._cover(self._grey()) < EMPTY_COVER:
                 return
             time.sleep(0.2)
-        # Timed out (e.g. lighting changed for good): accept the new scene as empty.
+        # Timed out (e.g. something was left in front of the camera): accept it as empty.
         self.background = self._grey()
 
     def close(self) -> None:

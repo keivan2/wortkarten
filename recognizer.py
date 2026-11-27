@@ -29,8 +29,15 @@ Antworte NUR mit JSON in genau diesem Format:
 - "quelle": "text" wenn die Antwort vom gedruckten Text kommt, sonst "bild".
 - "wort": das deutsche Wort, großgeschrieben, Substantive im Singular.
 - "artikel": der, die oder das; bei Farben, Zahlen und Buchstaben leer: "".
-- Wenn keine Karte zu sehen ist: {"gefunden": false}
+- Wenn gar keine Lernkarte zu sehen ist (nur Person, Hand, Möbel, Raum ...):
+  {"gefunden": false, "karte": false}
+- Wenn eine Karte zu sehen ist, du sie aber nicht erkennen kannst:
+  {"gefunden": false, "karte": true}
 """
+
+
+class NoCard:
+    """Gemini saw no card at all in the photo (something else triggered the camera)."""
 
 
 @dataclass
@@ -72,7 +79,9 @@ class Recognizer:
                 error = e
         raise error or RuntimeError("no Gemini model configured")
 
-    def identify(self, jpeg: bytes) -> Result | None:
+    def identify(self, jpeg: bytes) -> "Result | NoCard | None":
+        """Result = card recognised, NoCard = no card in the photo,
+        None = a card is there but could not be recognised."""
         response = self._ask(jpeg)
         log.debug("Gemini raw answer: %s", response.text)
         try:
@@ -82,8 +91,10 @@ class Recognizer:
             return None
         if isinstance(data, list) and data:  # Gemini sometimes wraps the object in a list
             data = data[0]
-        if not isinstance(data, dict) or not data.get("gefunden") or not data.get("wort"):
+        if not isinstance(data, dict):
             return None
+        if not data.get("gefunden") or not data.get("wort"):
+            return NoCard() if data.get("karte") is False else None
         article = str(data.get("artikel", "")).lower().strip()
         if article not in ("der", "die", "das"):
             article = ""

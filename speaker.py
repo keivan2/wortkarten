@@ -3,6 +3,7 @@ import asyncio
 import hashlib
 import logging
 import subprocess
+import threading
 
 import edge_tts
 
@@ -21,7 +22,29 @@ async def _synthesize(text: str, path) -> None:
     await tts.save(str(path))
 
 
-def say(text: str) -> None:
+# Set by stop() (e.g. from a button press in another thread): the current sentence is cut
+# off and further say() calls are skipped until resume() is called.
+_interrupted = threading.Event()
+_lock = threading.Lock()
+_player: subprocess.Popen | None = None
+
+
+def stop() -> None:
+    _interrupted.set()
+    with _lock:
+        if _player and _player.poll() is None:
+            _player.terminate()
+
+
+def resume() -> None:
+    _interrupted.clear()
+
+
+def say(text: str) -> bool:
+    """Speak text. Returns False if it was interrupted by stop()."""
+    global _player
+    if _interrupted.is_set():
+        return False
     config.CACHE_DIR.mkdir(exist_ok=True)
     path = _cache_path(text)
     if not path.exists():
@@ -32,8 +55,13 @@ def say(text: str) -> None:
         except Exception:
             log.exception("Speech synthesis failed for %r", text)
             tmp.unlink(missing_ok=True)
-            return
+            return True
     cmd = ["mpg123", "-q"]
     if config.AUDIO_DEVICE:
         cmd += ["-a", config.AUDIO_DEVICE]
-    subprocess.run(cmd + [str(path)], check=False)
+    with _lock:
+        if _interrupted.is_set():
+            return False
+        _player = subprocess.Popen(cmd + [str(path)])
+    _player.wait()
+    return not _interrupted.is_set()
