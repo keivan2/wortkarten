@@ -140,6 +140,9 @@ def run_camera() -> None:
     speaker.start_bluetooth()  # connects in the background while the camera starts
     recognizer = Recognizer()
     watcher = CardWatcher()
+    if config.LIVE_PORT:
+        import livefeed
+        livefeed.start(watcher.live_frame, config.LIVE_PORT)
     log.info("Mode: %s", config.MODE)
     try:
         if config.MODE == "button":

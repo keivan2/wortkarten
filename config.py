@@ -70,6 +70,12 @@ MQTT_PORT = int(os.environ.get("WK_MQTT_PORT", "1883"))
 BUTTON_TOPICS = [t.strip() for t in os.environ.get(
     "WK_BUTTON_TOPICS", "zigbee2mqtt/knopf").split(",") if t.strip()]
 
+# Live camera view in the browser on this port (0 = off). No password: anyone on the home
+# network can watch it.
+LIVE_PORT = int(os.environ.get("WK_LIVE_PORT", "0"))
+if not 0 <= LIVE_PORT <= 65535:
+    raise ValueError(f"WK_LIVE_PORT must be a port number or 0, got {LIVE_PORT}")
+
 # Every captured card photo is kept here for later review (set WK_SAVE_CAPTURES=0 to disable).
 SAVE_CAPTURES = os.environ.get("WK_SAVE_CAPTURES", "1") != "0"
 CAPTURES_DIR = BASE_DIR / "captures"

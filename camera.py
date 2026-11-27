@@ -86,7 +86,8 @@ class CardWatcher:
         """Fraction of the zone that differs clearly from the empty background."""
         return float(np.mean(np.abs(cur - self.background) > config.PIXEL_DIFF))
 
-    def _jpeg(self, crop: bool = True, outline: bool = False) -> bytes:
+    def _jpeg(self, crop: bool = True, outline: bool = False,
+              max_size: tuple[int, int] | None = None, quality: int = 90) -> bytes:
         """Photo of the zone (plus a margin, in case the card sticks out a little)."""
         img = self.cam.capture_image("main").convert("RGB")
         W, H = img.size
@@ -98,8 +99,10 @@ class CardWatcher:
             m = CROP_MARGIN
             img = img.crop((int(max(x0 - m, 0) * W), int(max(y0 - m, 0) * H),
                             int(min(x1 + m, 1) * W), int(min(y1 + m, 1) * H)))
+        if max_size:
+            img.thumbnail(max_size)
         buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=90)
+        img.save(buf, format="JPEG", quality=quality)
         return buf.getvalue()
 
     def _expose_for_card(self) -> None:
@@ -140,6 +143,10 @@ class CardWatcher:
     def snapshot(self) -> bytes:
         """Full picture with the detection zone drawn in red, for aiming the camera."""
         return self._jpeg(crop=False, outline=True)
+
+    def live_frame(self) -> bytes:
+        """Small frame with the zone in red, for the live view in the browser."""
+        return self._jpeg(crop=False, outline=True, max_size=(640, 480), quality=70)
 
     def wait_for_card(self) -> bytes:
         """Block until something big (close to the camera) is held still in the zone."""

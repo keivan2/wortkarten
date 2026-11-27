@@ -55,6 +55,7 @@ There are two modes (`WK_MODE`):
 |---|---|
 | `main.py` | Entry point, auto and button loops; `--image` and `--snapshot` test modes |
 | `camera.py` | Detection zone, card detection, own auto-exposure, photo capture (Picamera2) |
+| `livefeed.py` | Live camera view in the browser (MJPEG stream, optional) |
 | `button.py` | Listens for button presses over MQTT (from zigbee2mqtt) |
 | `recognizer.py` | Gemini image recognition |
 | `tts.py` | Text to speech: ElevenLabs, falling back to edge-tts; MP3 cache |
@@ -253,6 +254,15 @@ cd ~/wortkarten && ./venv/bin/python main.py --snapshot ~/snapshot.jpg
 sudo systemctl start wortkarten
 ```
 
+### Live view in the browser
+
+Set `WK_LIVE_PORT=8000` (in `.env` or the service drop-in) and restart the service. Then open
+`http://<pi-address>:8000/` on any computer or phone at home to watch the camera live, with
+the detection zone in red. `/snapshot.jpg` gives a single picture. It works while the service
+runs, so there's no need to stop it. There's **no password**: anyone on your home network can
+open it, so leave it off (`0`, the default) if that's not OK. The stream only uses CPU while a
+browser is watching.
+
 **Tips for your child:** hold the card 25–35 cm from the camera so it fills most of the red
 zone, in good light, and keep it still for about a second. Tilt glossy cards slightly if a
 lamp reflects on the text. In auto mode, take each card away before showing the next one.
@@ -396,6 +406,7 @@ You can set all of these in `.env`. Restart the service after changing them.
 | `WK_BT_SPEAKER` | *(empty)* | MAC address of the paired Bluetooth speaker, e.g. `52:C5:EC:33:40:58` |
 | `WK_CAMERA_TUNING` | `ov5647_noir.json` | Camera colour tuning. Leave it empty for a standard (non-IR) camera |
 | `WK_TARGET_BRIGHTNESS` | `110` | Average brightness (0–255) that the app's own auto-exposure aims for. Lower it if pictures look washed out |
+| `WK_LIVE_PORT` | `0` (off) | Port for the live camera view in the browser, e.g. `8000`. No password, home network only |
 | `WK_SAVE_CAPTURES` | `1` | Save every card photo to `captures/`. Set it to `0` to turn this off |
 | `WK_CHILD_NAME` | *(empty)* | Your child's name, used in the greeting "Hallo Anna! Zeig mir eine Karte …". Keep it in `.env`, not in the code, because the repo is public |
 | `WK_MODE` | `auto` | `auto` reads a card when it's held still; `button` reads only when the button is pressed |
