@@ -1,27 +1,14 @@
-"""German text-to-speech with a local cache, so repeated words play instantly."""
-import asyncio
-import hashlib
+"""Plays German speech: on the Bluetooth speaker if connected, else the wired output.
+The MP3s come from tts.py (cached)."""
 import logging
 import subprocess
 import threading
 import time
 
-import edge_tts
-
 import config
+import tts
 
 log = logging.getLogger(__name__)
-
-
-def _cache_path(text: str):
-    key = f"{config.VOICE}|{config.VOICE_RATE}|{text}"
-    return config.CACHE_DIR / (hashlib.sha1(key.encode()).hexdigest()[:16] + ".mp3")
-
-
-async def _synthesize(text: str, path) -> None:
-    tts = edge_tts.Communicate(text, config.VOICE, rate=config.VOICE_RATE)
-    await tts.save(str(path))
-
 
 # Set by stop() (e.g. from a button press in another thread): the current sentence is cut
 # off and further say() calls are skipped until resume() is called.
@@ -45,17 +32,10 @@ def say(text: str) -> bool:
     """Speak text. Returns False if it was interrupted by stop()."""
     if _interrupted.is_set():
         return False
-    config.CACHE_DIR.mkdir(exist_ok=True)
-    path = _cache_path(text)
-    if not path.exists():
-        tmp = path.with_suffix(".part")
-        try:
-            asyncio.run(_synthesize(text, tmp))
-            tmp.rename(path)
-        except Exception:
-            log.exception("Speech synthesis failed for %r", text)
-            tmp.unlink(missing_ok=True)
-            return True
+    path = tts.mp3_for(text)
+    if path is None:
+        log.error("No speech engine available for %r", text)
+        return True
     device = _output_device()
     if not _play(path, device) and device != config.AUDIO_DEVICE and not _interrupted.is_set():
         log.warning("Bluetooth playback failed, using the wired output instead")

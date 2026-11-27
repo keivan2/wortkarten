@@ -28,8 +28,14 @@ GEMINI_TIMEOUT_MS = int(os.environ.get("GEMINI_TIMEOUT_MS", "15000"))
 # Optional: the child's name, used as "Hallo Anna!" and "Anna, das ist die Kuh."
 CHILD_NAME = os.environ.get("WK_CHILD_NAME", "").strip()
 
-VOICE = os.environ.get("WK_VOICE", "de-DE-KatjaNeural")
-VOICE_RATE = os.environ.get("WK_VOICE_RATE", "-15%")  # a bit slower for kids
+# ElevenLabs (used when a key is set). Default: "Sarah" with the expressive v3 model.
+ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "").strip()
+ELEVENLABS_VOICE = os.environ.get("WK_ELEVENLABS_VOICE", "EXAVITQu4vr4xnSDxMaL")
+ELEVENLABS_MODEL = os.environ.get("WK_ELEVENLABS_MODEL", "eleven_v3")
+
+# Free Microsoft Edge voice: used without an ElevenLabs key, or when ElevenLabs fails.
+VOICE = os.environ.get("WK_VOICE", "de-DE-SeraphinaMultilingualNeural")
+VOICE_RATE = os.environ.get("WK_VOICE_RATE", "-10%")  # a bit slower for kids
 AUDIO_DEVICE = os.environ.get("WK_AUDIO_DEVICE", "")  # e.g. "hw:0,0"; empty = default
 # Bluetooth speaker MAC address (paired + trusted with bluetoothctl). When it is off or out
 # of range, sound falls back to AUDIO_DEVICE (the headphone jack).

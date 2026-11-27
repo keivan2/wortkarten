@@ -38,8 +38,11 @@ There are two modes (`WK_MODE`):
    returns JSON such as
    `{"text": "Kuh", "quelle": "text", "wort": "Kuh", "artikel": "die", "englisch": "cow"}`.
    If one model is busy, the next one in the list is tried.
-3. **`speaker.py`** turns the text into German speech with Microsoft Edge's free online voices
-   (`edge-tts`). It saves each phrase as an MP3 in `cache/`, so repeated words play instantly.
+3. **`tts.py`** turns the text into German speech with **ElevenLabs** (voice "Sarah", model v3),
+   which sounds the most human. If there's no ElevenLabs key, or it fails (offline, free
+   allowance used up), it uses Microsoft Edge's free voice **Seraphina** (`edge-tts`) instead.
+   Each phrase is saved as an MP3 in `cache/`, so repeated words play instantly and cost nothing.
+   **`speaker.py`** plays it on the Bluetooth speaker, or on the headphone jack as a fallback.
 4. **`main.py`** runs the loop and appends every recognised word to `gelernte_woerter.jsonl`.
    That log can feed a quiz mode later. If Gemini sees **no card** in the photo, the Pi stays
    silent in auto mode, because something else moved in front of the camera. In button mode it
@@ -52,7 +55,8 @@ There are two modes (`WK_MODE`):
 | `camera.py` | Detection zone, card detection, own auto-exposure, photo capture (Picamera2) |
 | `button.py` | Listens for button presses over MQTT (from zigbee2mqtt) |
 | `recognizer.py` | Gemini image recognition |
-| `speaker.py` | German TTS with an MP3 cache |
+| `tts.py` | Text to speech: ElevenLabs, falling back to edge-tts; MP3 cache |
+| `speaker.py` | Playback: Bluetooth speaker or wired output, stopping on a button press |
 | `config.py` | All settings, read from `.env` or environment variables |
 | `deploy/wortkarten.service` | systemd unit that starts the app on boot |
 
@@ -146,8 +150,11 @@ GEMINI_API_KEY=your-key-here
 # Optional settings (defaults shown)
 # GEMINI_MODELS=gemini-3.5-flash-lite,gemini-3.5-flash
 # GEMINI_TIMEOUT_MS=15000
-# WK_VOICE=de-DE-KatjaNeural
-# WK_VOICE_RATE=-15%
+# ELEVENLABS_API_KEY=
+# WK_ELEVENLABS_VOICE=EXAVITQu4vr4xnSDxMaL
+# WK_ELEVENLABS_MODEL=eleven_v3
+# WK_VOICE=de-DE-SeraphinaMultilingualNeural
+# WK_VOICE_RATE=-10%
 # WK_AUDIO_DEVICE=
 # WK_BT_SPEAKER=
 # WK_CAMERA_TUNING=ov5647_noir.json
@@ -170,7 +177,7 @@ GEMINI_API_KEY=your-key-here
 Test the speaker:
 
 ```bash
-./venv/bin/edge-tts --voice de-DE-KatjaNeural --text "Hallo!" --write-media /tmp/t.mp3 && mpg123 /tmp/t.mp3
+./venv/bin/edge-tts --voice de-DE-SeraphinaMultilingualNeural --text "Hallo!" --write-media /tmp/t.mp3 && mpg123 /tmp/t.mp3
 ```
 
 If you hear nothing, run `alsamixer` and turn up the volume, or set `WK_AUDIO_DEVICE=hw:0,0` in `.env`.
@@ -378,8 +385,11 @@ You can set all of these in `.env`. Restart the service after changing them.
 | `GEMINI_API_KEY` | – | **Required.** Google AI Studio key |
 | `GEMINI_MODELS` | `gemini-3.5-flash-lite,gemini-3.5-flash` | Models to try, in order |
 | `GEMINI_TIMEOUT_MS` | `15000` | Give up on a model after this many ms |
-| `WK_VOICE` | `de-DE-KatjaNeural` | German voice. List them with `./venv/bin/edge-tts --list-voices \| grep de-DE` |
-| `WK_VOICE_RATE` | `-15%` | Speaking speed; slightly slower suits kids |
+| `ELEVENLABS_API_KEY` | *(empty)* | ElevenLabs key (elevenlabs.io → API keys). Only the text-to-speech permission is needed. Without a key, the free voice is used |
+| `WK_ELEVENLABS_VOICE` | `EXAVITQu4vr4xnSDxMaL` ("Sarah") | ElevenLabs voice ID. Free accounts can only use the built-in voices, e.g. Sarah, Laura `FGY2WhTYpPnrIDTdsKH5`, Matilda `XrExE9yKIg1WjnnlVkGX`, George `JBFqnCBsd6RMkjVDRZzb` |
+| `WK_ELEVENLABS_MODEL` | `eleven_v3` | `eleven_v3` (most expressive) or `eleven_multilingual_v2` (calmer, very stable) |
+| `WK_VOICE` | `de-DE-SeraphinaMultilingualNeural` | Free fallback voice (edge-tts). `KatjaNeural`, `FlorianMultilingualNeural`, `AmalaNeural`, `TanjaNeural` and `ConradNeural` also work, even though `--list-voices` doesn't show all of them |
+| `WK_VOICE_RATE` | `-10%` | Speaking speed of the free voice; slightly slower suits kids |
 | `WK_AUDIO_DEVICE` | *(system default)* | Wired ALSA device for mpg123, e.g. `hw:0,0`. Also used as the fallback when the Bluetooth speaker is unavailable |
 | `WK_BT_SPEAKER` | *(empty)* | MAC address of the paired Bluetooth speaker, e.g. `52:C5:EC:33:40:58` |
 | `WK_CAMERA_TUNING` | `ov5647_noir.json` | Camera colour tuning. Leave it empty for a standard (non-IR) camera |
@@ -421,7 +431,11 @@ You can set all of these in `.env`. Restart the service after changing them.
 - **Gemini:** each card is one small image request, which is well within the free tier for
   home use. Photos are sent to Google, so point the camera at the card rather than at your
   child's face where you can.
-- **edge-tts:** free and needs no account. Only the text being spoken is sent, never images.
+- **ElevenLabs:** the free plan includes 10,000 characters a month. A new word sentence is about
+  30 characters, and repeats come from the cache for free, so that's roughly 300 new words a
+  month. When the allowance runs out, the free voice takes over automatically.
+- **edge-tts:** free and needs no account.
+- Only the text being spoken is sent to the voice services, never images.
 
 ## Roadmap
 
