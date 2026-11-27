@@ -68,13 +68,8 @@ def announce(result: Result | NoCard | None, image: Path | None = None,
     log.info("-> %s (%s) from %s, card text %r",
              result.phrase, result.english, result.source or "?", result.text)
     log_word(result, image)
-    sentence = f"Das ist {result.phrase}."
-    if config.CHILD_NAME:  # "Anna, das ist die Kuh."
-        sentence = f"{config.CHILD_NAME}, das ist {result.phrase}."
-    if not speaker.say(sentence):
-        return
-    time.sleep(0.4)
-    speaker.say(f"{result.phrase}!")  # repeat the word on its own
+    phrase = result.phrase
+    speaker.say(f"{phrase[:1].upper()}{phrase[1:]}!")  # just the word: "Die Kuh!"
 
 
 def recognise(recognizer: Recognizer, jpeg: bytes) -> tuple[Result | NoCard | None, Path | None]:

@@ -25,7 +25,7 @@ GEMINI_MODELS = os.environ.get(
 ).split(",")
 GEMINI_TIMEOUT_MS = int(os.environ.get("GEMINI_TIMEOUT_MS", "15000"))
 
-# Optional: the child's name, used as "Hallo Anna!" and "Anna, das ist die Kuh."
+# Optional: the child's name, used in the greeting "Hallo Anna! Zeig mir eine Karte ..."
 CHILD_NAME = os.environ.get("WK_CHILD_NAME", "").strip()
 
 # ElevenLabs (used when a key is set). Default: "Sarah" with the expressive v3 model.

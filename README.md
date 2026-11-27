@@ -3,7 +3,7 @@
 A German word-learning helper for kids on a Raspberry Pi. Hold a picture card in front of
 the camera and the Pi says what is on it, in German, with the article:
 
-> „Anna, das ist **die Kuh**. Die Kuh!"
+> „**Die Kuh!**"
 
 The Pi recognises the card online with Google Gemini, so you don't need a list of words on
 the device. Any card works: animals, fruit, vehicles, toys, and so on.
@@ -395,7 +395,7 @@ You can set all of these in `.env`. Restart the service after changing them.
 | `WK_CAMERA_TUNING` | `ov5647_noir.json` | Camera colour tuning. Leave it empty for a standard (non-IR) camera |
 | `WK_TARGET_BRIGHTNESS` | `110` | Average brightness (0–255) that the app's own auto-exposure aims for. Lower it if pictures look washed out |
 | `WK_SAVE_CAPTURES` | `1` | Save every card photo to `captures/`. Set it to `0` to turn this off |
-| `WK_CHILD_NAME` | *(empty)* | Your child's name: "Hallo Anna!" and "Anna, das ist die Kuh." Keep it in `.env`, not in the code, because the repo is public |
+| `WK_CHILD_NAME` | *(empty)* | Your child's name, used in the greeting "Hallo Anna! Zeig mir eine Karte …". Keep it in `.env`, not in the code, because the repo is public |
 | `WK_MODE` | `auto` | `auto` reads a card when it's held still; `button` reads only when the button is pressed |
 | `WK_BUTTON_TOPICS` | `zigbee2mqtt/knopf` | MQTT topics of the button(s), comma-separated |
 | `WK_MQTT_HOST` / `WK_MQTT_PORT` | `localhost` / `1883` | MQTT broker (mosquitto) |
