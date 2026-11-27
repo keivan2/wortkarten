@@ -130,6 +130,7 @@ GEMINI_API_KEY=your-key-here
 # WK_VOICE_RATE=-15%
 # WK_AUDIO_DEVICE=
 # WK_CAMERA_TUNING=ov5647_noir.json
+# WK_TARGET_BRIGHTNESS=110
 # WK_SAVE_CAPTURES=1
 # WK_MOTION_THRESHOLD=12
 # WK_STILL_THRESHOLD=4
@@ -210,7 +211,7 @@ The service keeps the camera busy, so stop it briefly:
 
 ```bash
 sudo systemctl stop wortkarten
-rpicam-still -n -t 1500 --width 1024 --height 768 \
+rpicam-still -n -t 1500 --width 1024 --height 768 --shutter 15000 --gain 1.5 \
   --tuning-file /usr/share/libcamera/ipa/rpi/vc4/ov5647_noir.json -o ~/snapshot.jpg
 sudo systemctl start wortkarten
 ```
@@ -233,6 +234,7 @@ You can set all of these in `.env`. Restart the service after changing them.
 | `WK_VOICE_RATE` | `-15%` | Speaking speed; slightly slower suits kids |
 | `WK_AUDIO_DEVICE` | *(system default)* | ALSA device for mpg123, e.g. `hw:0,0` |
 | `WK_CAMERA_TUNING` | `ov5647_noir.json` | Camera colour tuning. Leave it empty for a standard (non-IR) camera |
+| `WK_TARGET_BRIGHTNESS` | `110` | Average brightness (0–255) that the app's own auto-exposure aims for. Lower it if pictures look washed out |
 | `WK_SAVE_CAPTURES` | `1` | Save every card photo to `captures/`. Set it to `0` to turn this off |
 | `WK_MOTION_THRESHOLD` | `12` | How different from the empty scene counts as "a card is there". Raise it if the reader triggers by itself |
 | `WK_STILL_THRESHOLD` | `4` | How steady the card must be held. Raise it if it never triggers |
@@ -246,6 +248,8 @@ You can set all of these in `.env`. Restart the service after changing them.
 |---|---|
 | `No cameras available!` | Run `sudo dmesg \| grep ov5647`. An `i2c read error … -5` means the camera doesn't respond, which is a cable problem: check the direction, check it's pushed fully in, and check the small lens ribbon. If there's no ov5647 line at all, the `dtoverlay=ov5647` line is missing from the boot config. |
 | Pictures look **pink** | IR-CUT/NoIR cameras need `WK_CAMERA_TUNING=ov5647_noir.json` (the default). |
+| Pictures are **washed out / almost white** | This camera's built-in auto-exposure overexposes badly (it locks at about 37 ms and 4× gain), so the app sets exposure itself (`camera.py`). If they're still too bright, lower `WK_TARGET_BRIGHTNESS`. Note that `rpicam-still` without `--shutter`/`--gain` still uses the broken built-in mode. |
+| Pictures are **hazy / blurry** | Peel off any clear protective film on the lens. On wide-angle/fisheye models, turn the lens barrel gently to focus at the distance where cards are held (20–40 cm). |
 | It hangs or says „keine Verbindung" | No internet, or every Gemini model is busy (HTTP 503). Check `journalctl -u wortkarten`. Calls time out after 15 s. |
 | `404 … no longer available` | Google retired a model. List the current ones and update `GEMINI_MODELS`. |
 | It says the wrong word | Improve the light, hold the card closer and flatter, and avoid a busy background. |

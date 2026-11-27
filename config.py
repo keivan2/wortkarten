@@ -30,6 +30,8 @@ AUDIO_DEVICE = os.environ.get("WK_AUDIO_DEVICE", "")  # e.g. "hw:0,0"; empty = d
 
 # The IR-CUT/night-vision OV5647 shows pink colours with the normal tuning.
 CAMERA_TUNING = os.environ.get("WK_CAMERA_TUNING", "ov5647_noir.json")
+# Our own auto-exposure aims for this average brightness (0-255) of the empty scene.
+TARGET_BRIGHTNESS = float(os.environ.get("WK_TARGET_BRIGHTNESS", "110"))
 
 # Card detection (tuned on the low-res grey preview, values 0-255)
 MOTION_THRESHOLD = float(os.environ.get("WK_MOTION_THRESHOLD", "12"))

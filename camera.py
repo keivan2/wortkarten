@@ -11,9 +11,15 @@ import config
 log = logging.getLogger(__name__)
 
 LORES = (160, 120)
+MAX_EXPOSURE_US = 20000  # longer than this blurs a moving hand; use gain instead
+MAX_GAIN = 8.0
+EXPOSURE_CHECK_S = 2.0   # how often to re-check brightness while nobody shows a card
 
 
 class CardWatcher:
+    """Our own simple auto-exposure: this OV5647's built-in one locks at
+    ~37 ms / 4x gain and overexposes the picture badly in daylight."""
+
     def __init__(self) -> None:
         tuning = None
         if config.CAMERA_TUNING:
@@ -26,8 +32,41 @@ class CardWatcher:
         )
         self.cam.configure(cfg)
         self.cam.start()
-        time.sleep(2)  # let exposure settle
+        self.light = 10000.0  # exposure time (us) x analogue gain
+        self._apply_light()
+        for _ in range(8):  # converge from the starting guess
+            if not self._correct_exposure(tolerance=15):
+                break
         self.background = self._grey()
+
+    def _apply_light(self) -> None:
+        exposure = min(self.light, MAX_EXPOSURE_US)
+        gain = min(max(self.light / exposure, 1.0), MAX_GAIN)
+        self.light = exposure * gain
+        self.cam.set_controls(
+            {"AeEnable": False, "ExposureTime": int(exposure), "AnalogueGain": gain}
+        )
+        # New settings take a few frames to reach the sensor.
+        for _ in range(10):
+            meta = self.cam.capture_metadata()
+            if abs(meta["ExposureTime"] - exposure) < exposure * 0.1:
+                break
+        self.cam.capture_metadata()  # one more frame fully exposed with the new values
+
+    def _correct_exposure(self, tolerance: float) -> bool:
+        """Nudge exposure toward the target brightness. Returns True if it changed."""
+        mean = float(self._grey().mean())
+        target = config.TARGET_BRIGHTNESS
+        if abs(mean - target) <= tolerance:
+            return False
+        factor = min(max(target / max(mean, 1.0), 0.25), 4.0)
+        old = self.light
+        self.light = min(max(self.light * factor, 100.0), MAX_EXPOSURE_US * MAX_GAIN)
+        if abs(self.light - old) < 1:
+            return False  # already at a limit
+        self._apply_light()
+        log.debug("Exposure: brightness %.0f -> %.0f us x gain", mean, self.light)
+        return True
 
     def _grey(self) -> np.ndarray:
         frame = self.cam.capture_array("lores")
@@ -46,6 +85,7 @@ class CardWatcher:
         """Block until something new is held still in front of the camera."""
         still = 0
         prev = self._grey()
+        next_check = time.time() + EXPOSURE_CHECK_S
         while True:
             time.sleep(0.15)
             cur = self._grey()
@@ -56,6 +96,11 @@ class CardWatcher:
                 # Empty scene: slowly follow lighting changes.
                 self.background = (self.background * 0.9 + cur * 0.1).astype(np.int16)
                 still = 0
+                if time.time() >= next_check:
+                    next_check = time.time() + EXPOSURE_CHECK_S
+                    if self._correct_exposure(tolerance=35):
+                        # The picture changed because we changed it, not because of a card.
+                        self.background = prev = self._grey()
                 continue
             still = still + 1 if change_vs_prev < config.STILL_THRESHOLD else 0
             if still >= config.STILL_FRAMES:
