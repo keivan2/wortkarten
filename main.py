@@ -8,7 +8,6 @@
 import argparse
 import json
 import logging
-import random
 import re
 import time
 from pathlib import Path
@@ -19,7 +18,7 @@ from recognizer import NoCard, Recognizer, Result
 
 log = logging.getLogger("wortkarten")
 
-PRAISE = ["Super!", "Toll!", "Prima!", "Sehr gut!"]
+HELLO = f"Hallo {config.CHILD_NAME}!" if config.CHILD_NAME else "Hallo!"
 UNKNOWN = "Hmm, das erkenne ich nicht. Halt die Karte bitte still vor die Kamera."
 NO_CARD = "Ich sehe keine Karte. Halt sie vor die Kamera und drück nochmal."
 OFFLINE = "Oh, ich habe gerade keine Verbindung zum Internet."
@@ -69,9 +68,10 @@ def announce(result: Result | NoCard | None, image: Path | None = None,
     log.info("-> %s (%s) from %s, card text %r",
              result.phrase, result.english, result.source or "?", result.text)
     log_word(result, image)
-    if not speaker.say(random.choice(PRAISE)):
-        return
-    if not speaker.say(f"Das ist {result.phrase}."):
+    sentence = f"Das ist {result.phrase}."
+    if config.CHILD_NAME:  # "Anna, das ist die Kuh."
+        sentence = f"{config.CHILD_NAME}, das ist {result.phrase}."
+    if not speaker.say(sentence):
         return
     time.sleep(0.4)
     speaker.say(f"{result.phrase}!")  # repeat the word on its own
@@ -98,7 +98,7 @@ def run_image(path: str) -> None:
 
 def run_auto(recognizer: Recognizer, watcher) -> None:
     """Read a card as soon as one is held still in the zone."""
-    speaker.say("Hallo! Zeig mir eine Karte.")
+    speaker.say(f"{HELLO} Zeig mir eine Karte.")
     while True:
         jpeg = watcher.wait_for_card()
         try:
@@ -118,7 +118,7 @@ def run_button(recognizer: Recognizer, watcher) -> None:
 
     buttons = ButtonListener(on_press=speaker.stop)
     try:
-        speaker.say("Hallo! Zeig mir eine Karte und drück den Knopf.")
+        speaker.say(f"{HELLO} Zeig mir eine Karte und drück den Knopf.")
         while True:
             if not buttons.wait(timeout=2.0):
                 watcher.adjust_exposure()

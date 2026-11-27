@@ -24,6 +24,9 @@ GEMINI_MODELS = os.environ.get(
 ).split(",")
 GEMINI_TIMEOUT_MS = int(os.environ.get("GEMINI_TIMEOUT_MS", "15000"))
 
+# Optional: the child's name, used as "Hallo Anna!" and "Anna, das ist die Kuh."
+CHILD_NAME = os.environ.get("WK_CHILD_NAME", "").strip()
+
 VOICE = os.environ.get("WK_VOICE", "de-DE-KatjaNeural")
 VOICE_RATE = os.environ.get("WK_VOICE_RATE", "-15%")  # a bit slower for kids
 AUDIO_DEVICE = os.environ.get("WK_AUDIO_DEVICE", "")  # e.g. "hw:0,0"; empty = default

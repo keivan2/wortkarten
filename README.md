@@ -3,7 +3,7 @@
 A German word-learning helper for kids on a Raspberry Pi. Hold a picture card in front of
 the camera and the Pi says what is on it, in German, with the article:
 
-> „Super!" … „Das ist **die Kuh**. Die Kuh!"
+> „Anna, das ist **die Kuh**. Die Kuh!"
 
 The Pi recognises the card online with Google Gemini, so you don't need a list of words on
 the device. Any card works: animals, fruit, vehicles, toys, and so on.
@@ -151,6 +151,7 @@ GEMINI_API_KEY=your-key-here
 # WK_CAMERA_TUNING=ov5647_noir.json
 # WK_TARGET_BRIGHTNESS=110
 # WK_SAVE_CAPTURES=1
+# WK_CHILD_NAME=
 # WK_MODE=auto
 # WK_BUTTON_TOPICS=zigbee2mqtt/knopf
 # WK_MQTT_HOST=localhost
@@ -260,20 +261,72 @@ zigbee2mqtt publishes each press as `{"action": "single"}` (or `double` / `hold`
 `zigbee2mqtt/<button name>`. Any message with an `action` counts as a press, while battery
 and signal updates are ignored.
 
-**Setup:**
+Our hardware: a **Tuya TS0041** one-button wireless switch and a **"ZigBee 3.0 USB-Dongle
+Plus-E"** (Silicon Labs EFR32MG21, EmberZNet 7.4.5 firmware, CH340 USB chip). The config
+files are in `deploy/`.
 
-1. Install the MQTT broker and Node.js:
-   `sudo apt install -y mosquitto mosquitto-clients nodejs npm`
-2. Install zigbee2mqtt, following the
-   [official Linux guide](https://www.zigbee2mqtt.io/guide/installation/01_linux.html), into
-   `/opt/zigbee2mqtt`. In its `data/configuration.yaml`, set the serial port to
-   `/dev/serial/by-id/…` (find it with `ls /dev/serial/by-id/`), set the adapter type that
-   matches your dongle (`zstack` for TI chips, `ember` for Silicon Labs chips), and allow joining.
-3. Pair the button: put it in pairing mode, usually by holding its button for about 5 s until
-   the LED blinks. Then rename it to **`knopf`** in zigbee2mqtt, or set `WK_BUTTON_TOPICS` to
-   its name.
-4. Check that presses arrive: `mosquitto_sub -t 'zigbee2mqtt/knopf' -v`, then press the button.
-5. Set `WK_MODE=button` in `.env` and run `sudo systemctl restart wortkarten`.
+**1. MQTT broker and Node.js 24.** zigbee2mqtt 2.x needs Node.js 22.13 or newer. Debian 13
+only ships Node.js 20, so install Node.js from NodeSource:
+
+```bash
+sudo apt install -y mosquitto mosquitto-clients git
+sudo apt remove -y nodejs npm            # only if Debian's Node.js 20 is installed
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
+sudo apt install -y nodejs
+node --version                           # v24.x
+```
+
+**2. Install zigbee2mqtt.** This takes about 5–10 minutes on a Pi 3:
+
+```bash
+sudo mkdir -p /opt/zigbee2mqtt && sudo chown $USER: /opt/zigbee2mqtt
+git clone --depth 1 https://github.com/Koenkk/zigbee2mqtt.git /opt/zigbee2mqtt
+cd /opt/zigbee2mqtt
+npx --yes pnpm install --frozen-lockfile
+npx --yes pnpm run build
+```
+
+**3. Configure and start it.** Check that the `port` in the config matches
+`ls /dev/serial/by-id/`. For a TI-based dongle (e.g. "-P"), change `adapter` to `zstack`.
+
+```bash
+cp ~/wortkarten/deploy/zigbee2mqtt/configuration.yaml /opt/zigbee2mqtt/data/
+sudo cp ~/wortkarten/deploy/zigbee2mqtt.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now zigbee2mqtt
+mosquitto_sub -t zigbee2mqtt/bridge/state -C 1     # should print {"state":"online"}
+```
+
+On first start, zigbee2mqtt writes your network's secret keys into
+`/opt/zigbee2mqtt/data/configuration.yaml`. Don't copy that file back into the repo.
+
+**4. Pair the button.** Open pairing for 3 minutes, either in the web page
+(http://192.168.50.187:8080, "Permit join") or with:
+
+```bash
+mosquitto_pub -t zigbee2mqtt/bridge/request/permit_join -m '{"time": 180}'
+```
+
+Hold the button **once for about 5 s**, then let go. The TS0041 has no visible LED, so don't
+wait for one. Within a few seconds the log reports *"Tuya Wireless switch with 1 button
+(TS0041)"*. Then rename it to `knopf` (replace the address with yours from the log or web page):
+
+```bash
+mosquitto_pub -t zigbee2mqtt/bridge/request/device/rename \
+  -m '{"from": "0xa4c13857bce16546", "to": "knopf"}'
+```
+
+⚠️ **After pairing, only tap the button.** A short hold is fine and counts as a press, but
+holding it for about 5 s resets it, and it leaves the network and has to be paired again.
+
+**5. Check presses arrive**, then switch the card reader to button mode:
+
+```bash
+mosquitto_sub -t 'zigbee2mqtt/knopf' -v
+#   zigbee2mqtt/knopf {"action":"single","battery":100,"linkquality":244,"voltage":3000}
+```
+
+Add `WK_MODE=button` to `.env`, then run `sudo systemctl restart wortkarten`.
 
 To test button mode without the button, fake a press:
 
@@ -298,6 +351,7 @@ You can set all of these in `.env`. Restart the service after changing them.
 | `WK_CAMERA_TUNING` | `ov5647_noir.json` | Camera colour tuning. Leave it empty for a standard (non-IR) camera |
 | `WK_TARGET_BRIGHTNESS` | `110` | Average brightness (0–255) that the app's own auto-exposure aims for. Lower it if pictures look washed out |
 | `WK_SAVE_CAPTURES` | `1` | Save every card photo to `captures/`. Set it to `0` to turn this off |
+| `WK_CHILD_NAME` | *(empty)* | Your child's name: "Hallo Anna!" and "Anna, das ist die Kuh." Keep it in `.env`, not in the code, because the repo is public |
 | `WK_MODE` | `auto` | `auto` reads a card when it's held still; `button` reads only when the button is pressed |
 | `WK_BUTTON_TOPICS` | `zigbee2mqtt/knopf` | MQTT topics of the button(s), comma-separated |
 | `WK_MQTT_HOST` / `WK_MQTT_PORT` | `localhost` / `1883` | MQTT broker (mosquitto) |
