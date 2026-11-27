@@ -21,9 +21,13 @@ camera ──► motion check ──► card held still? ──► photo ──�
 1. **`camera.py`** compares small grey preview frames with an empty background. When something
    new appears and holds still for about 0.6 s, it takes a 1024×768 photo. It then waits until
    the card is removed, so each card is read only once.
-2. **`recognizer.py`** sends the photo to Gemini. Gemini returns JSON such as
-   `{"wort": "Kuh", "artikel": "die", "englisch": "cow"}`. If one model is busy, the next one
-   in the list is tried.
+2. **`recognizer.py`** sends the photo to Gemini. Gemini **reads the name printed on the card
+   first** and only falls back to the picture when no text is readable. That matters for cards
+   that look alike, such as colour blobs labelled "Rot", "Blau", "Grün". Rotated cards work, and
+   labels in other languages are translated (a card saying "Yellow" becomes *Gelb*). Gemini
+   returns JSON such as
+   `{"text": "Kuh", "quelle": "text", "wort": "Kuh", "artikel": "die", "englisch": "cow"}`.
+   If one model is busy, the next one in the list is tried.
 3. **`speaker.py`** turns the text into German speech with Microsoft Edge's free online voices
    (`edge-tts`). It saves each phrase as an MP3 in `cache/`, so repeated words play instantly.
 4. **`main.py`** runs the loop, says „Super!" right away as feedback, and appends every

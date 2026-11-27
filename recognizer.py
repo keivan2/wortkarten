@@ -10,14 +10,26 @@ import config
 
 log = logging.getLogger(__name__)
 
-PROMPT = """Ein kleines Kind hält eine Bildkarte vor eine Kamera.
-Was ist auf der Karte abgebildet (Tier, Gegenstand, Essen, Fahrzeug, Farbe ...)?
-Ignoriere die Hand, das Kind und den Hintergrund – nur das Motiv auf der Karte zählt.
+PROMPT = """Ein kleines Kind hält eine Lernkarte vor eine Kamera.
+Die Karten haben ein Bild und darunter den Namen als gedruckten Text
+(z. B. ein Farbklecks mit "Rot" darunter, oder eine Kuh mit "Kuh" darunter).
+Das Foto kann gedreht, schräg oder leicht unscharf sein.
+Ignoriere die Hand, das Kind und den Hintergrund – nur die Karte zählt.
+
+1. Lies zuerst den gedruckten Text auf der Karte. Der Text ist die richtige Antwort,
+   auch wenn das Bild etwas anderes zu zeigen scheint.
+   - Ist der Text deutsch, übernimm ihn genau (nur Groß-/Kleinschreibung korrigieren).
+   - Ist er in einer anderen Sprache, übersetze ihn ins Deutsche.
+   - Steht schon ein Artikel dabei ("die Kuh"), trenne ihn in "artikel" und "wort".
+2. Nur wenn kein Text lesbar ist: bestimme das Motiv aus dem Bild.
+
 Antworte NUR mit JSON in genau diesem Format:
-{"gefunden": true, "wort": "Kuh", "artikel": "die", "englisch": "cow"}
-- "wort": das einfache, kindgerechte deutsche Substantiv im Singular, großgeschrieben.
-- "artikel": der, die oder das (bei Farben leer lassen: "").
-- Wenn keine Karte oder kein klares Motiv zu sehen ist: {"gefunden": false}
+{"gefunden": true, "text": "Kuh", "quelle": "text", "wort": "Kuh", "artikel": "die", "englisch": "cow"}
+- "text": der Text genau so, wie er auf der Karte steht ("" wenn keiner lesbar ist).
+- "quelle": "text" wenn die Antwort vom gedruckten Text kommt, sonst "bild".
+- "wort": das deutsche Wort, großgeschrieben, Substantive im Singular.
+- "artikel": der, die oder das; bei Farben, Zahlen und Buchstaben leer: "".
+- Wenn keine Karte zu sehen ist: {"gefunden": false}
 """
 
 
@@ -26,6 +38,8 @@ class Result:
     word: str
     article: str
     english: str
+    text: str = ""      # text as printed on the card
+    source: str = ""    # "text" (read from the card) or "bild" (guessed from the picture)
 
     @property
     def phrase(self) -> str:
@@ -66,6 +80,8 @@ class Recognizer:
         except (json.JSONDecodeError, TypeError):
             log.warning("Unparseable answer: %r", response.text)
             return None
+        if isinstance(data, list) and data:  # Gemini sometimes wraps the object in a list
+            data = data[0]
         if not isinstance(data, dict) or not data.get("gefunden") or not data.get("wort"):
             return None
         article = str(data.get("artikel", "")).lower().strip()
@@ -75,4 +91,6 @@ class Recognizer:
             word=str(data["wort"]).strip(),
             article=article,
             english=str(data.get("englisch", "")).strip(),
+            text=str(data.get("text", "")).strip(),
+            source=str(data.get("quelle", "")).strip(),
         )

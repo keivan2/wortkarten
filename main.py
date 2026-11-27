@@ -42,13 +42,15 @@ def announce(result: Result | None, image: Path | None = None) -> None:
     if result is None:
         speaker.say(UNKNOWN)
         return
-    log.info("-> %s (%s)", result.phrase, result.english)
+    log.info("-> %s (%s) from %s, card text %r",
+             result.phrase, result.english, result.source or "?", result.text)
     speaker.say(f"Das ist {result.phrase}.")
     time.sleep(0.4)
     speaker.say(f"{result.phrase}!")  # repeat the word on its own
     entry = {
         "zeit": time.strftime("%Y-%m-%d %H:%M:%S"),
         "wort": result.word, "artikel": result.article, "englisch": result.english,
+        "kartentext": result.text, "quelle": result.source,
     }
     if image:
         entry["bild"] = str(image.relative_to(config.BASE_DIR))
