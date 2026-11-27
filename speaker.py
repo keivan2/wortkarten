@@ -4,6 +4,7 @@ import hashlib
 import logging
 import subprocess
 import threading
+import time
 
 import edge_tts
 
@@ -42,7 +43,6 @@ def resume() -> None:
 
 def say(text: str) -> bool:
     """Speak text. Returns False if it was interrupted by stop()."""
-    global _player
     if _interrupted.is_set():
         return False
     config.CACHE_DIR.mkdir(exist_ok=True)
@@ -56,12 +56,80 @@ def say(text: str) -> bool:
             log.exception("Speech synthesis failed for %r", text)
             tmp.unlink(missing_ok=True)
             return True
-    cmd = ["mpg123", "-q"]
-    if config.AUDIO_DEVICE:
-        cmd += ["-a", config.AUDIO_DEVICE]
+    device = _output_device()
+    if not _play(path, device) and device != config.AUDIO_DEVICE and not _interrupted.is_set():
+        log.warning("Bluetooth playback failed, using the wired output instead")
+        _play(path, config.AUDIO_DEVICE)
+    return not _interrupted.is_set()
+
+
+def _play(path, device: str) -> bool:
+    """Play one MP3 file. Returns True on success (or when cut off by stop())."""
+    global _player
+    cmd = ["mpg123", "-q"] + (["-a", device] if device else []) + [str(path)]
     with _lock:
         if _interrupted.is_set():
-            return False
-        _player = subprocess.Popen(cmd + [str(path)])
-    _player.wait()
-    return not _interrupted.is_set()
+            return True
+        # stderr is captured: the Bluetooth ALSA plugin prints lots of debug lines.
+        _player = subprocess.Popen(cmd, stderr=subprocess.PIPE, text=True, errors="replace")
+    _, err = _player.communicate()
+    if _player.returncode != 0 and not _interrupted.is_set():
+        errors = [l for l in err.splitlines() if "] D: " not in l]
+        log.warning("mpg123 on %r failed (%s): %s", device or "default",
+                    _player.returncode, " | ".join(errors[-3:]))
+        return False
+    return True
+
+
+# --- Bluetooth speaker -------------------------------------------------------------
+RECONNECT_EVERY_S = 20
+_watcher_started = False
+
+
+def _bt_connected(mac: str) -> bool:
+    try:
+        out = subprocess.run(["bluetoothctl", "info", mac],
+                             capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return "Connected: yes" in out
+
+
+def _keep_connected(mac: str) -> None:
+    """Background thread: whenever the speaker is switched on again, reconnect it.
+    Speech never waits for this; until then it uses the wired output."""
+    was_connected = None
+    while True:
+        connected = _bt_connected(mac)
+        if not connected:
+            try:
+                subprocess.run(["bluetoothctl", "--timeout", "8", "connect", mac],
+                               capture_output=True, timeout=15)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+            connected = _bt_connected(mac)
+        if connected != was_connected:
+            log.info("Bluetooth speaker %s", "connected" if connected
+                     else "not available, using the wired output")
+            was_connected = connected
+        time.sleep(RECONNECT_EVERY_S)
+
+
+def start_bluetooth() -> None:
+    """Start the reconnect thread (once). Called on startup and from say()."""
+    global _watcher_started
+    if config.BT_SPEAKER and not _watcher_started:
+        _watcher_started = True
+        threading.Thread(target=_keep_connected, args=(config.BT_SPEAKER,),
+                         daemon=True, name="bt-speaker").start()
+
+
+def _output_device() -> str:
+    """The Bluetooth speaker if it is connected right now, else the wired output."""
+    mac = config.BT_SPEAKER
+    if not mac:
+        return config.AUDIO_DEVICE
+    start_bluetooth()
+    if _bt_connected(mac):
+        return f"bluealsa:DEV={mac},PROFILE=a2dp"
+    return config.AUDIO_DEVICE

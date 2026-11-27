@@ -1,5 +1,6 @@
 """Settings, read from environment variables (see .env)."""
 import os
+import re
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -30,6 +31,11 @@ CHILD_NAME = os.environ.get("WK_CHILD_NAME", "").strip()
 VOICE = os.environ.get("WK_VOICE", "de-DE-KatjaNeural")
 VOICE_RATE = os.environ.get("WK_VOICE_RATE", "-15%")  # a bit slower for kids
 AUDIO_DEVICE = os.environ.get("WK_AUDIO_DEVICE", "")  # e.g. "hw:0,0"; empty = default
+# Bluetooth speaker MAC address (paired + trusted with bluetoothctl). When it is off or out
+# of range, sound falls back to AUDIO_DEVICE (the headphone jack).
+BT_SPEAKER = os.environ.get("WK_BT_SPEAKER", "").strip().upper()
+if BT_SPEAKER and not re.fullmatch(r"([0-9A-F]{2}:){5}[0-9A-F]{2}", BT_SPEAKER):
+    raise ValueError(f"WK_BT_SPEAKER must look like 52:C5:EC:33:40:58, got {BT_SPEAKER!r}")
 
 # The IR-CUT/night-vision OV5647 shows pink colours with the normal tuning.
 CAMERA_TUNING = os.environ.get("WK_CAMERA_TUNING", "ov5647_noir.json")

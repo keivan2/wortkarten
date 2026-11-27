@@ -62,7 +62,8 @@ There are two modes (`WK_MODE`):
 
 - **Raspberry Pi 3B+.** Other Pis should work too.
 - **OV5647 camera** on the CSI ribbon. Ours is a third-party 5 MP IR-CUT night-vision model.
-- **Speaker** on the 3.5 mm headphone jack. Bluetooth is planned.
+- **Speaker:** a Bluetooth speaker (ours is a *Fresh 'n Rebel 1ARB700*). Whenever it's off or out
+  of range, the sound goes to the 3.5 mm headphone jack instead.
 - **Optional: Zigbee button.** We use a Tuya battery "scene switch" button with a USB Zigbee
   dongle (ours shows up as a CH340 serial device, `/dev/ttyUSB0`).
 - **Internet connection** (Wi-Fi or Ethernet).
@@ -148,6 +149,7 @@ GEMINI_API_KEY=your-key-here
 # WK_VOICE=de-DE-KatjaNeural
 # WK_VOICE_RATE=-15%
 # WK_AUDIO_DEVICE=
+# WK_BT_SPEAKER=
 # WK_CAMERA_TUNING=ov5647_noir.json
 # WK_TARGET_BRIGHTNESS=110
 # WK_SAVE_CAPTURES=1
@@ -248,6 +250,37 @@ lamp reflects on the text. In auto mode, take each card away before showing the 
 When the service starts, keep the zone empty: it takes whatever is in view as the empty
 background.
 
+### Bluetooth speaker
+
+This uses **bluez-alsa**, a small system service that makes a Bluetooth speaker a normal ALSA
+sound output. Unlike PulseAudio/PipeWire, it works for a background service with nobody logged in.
+
+```bash
+sudo apt install -y bluez-alsa-utils libasound2-plugin-bluez rfkill
+sudo systemctl disable --now bluealsa-aplay   # that one is for using the Pi AS a speaker
+sudo rfkill unblock bluetooth                  # Raspberry Pi OS ships with Bluetooth blocked
+bluetoothctl power on
+```
+
+Put the speaker in pairing mode, then find it and pair it:
+
+```bash
+bluetoothctl --timeout 30 scan on
+bluetoothctl devices | grep -v -- '-..-..-'    # look for your speaker's name
+bluetoothctl pair 52:C5:EC:33:40:58            # use your speaker's address
+bluetoothctl trust 52:C5:EC:33:40:58
+bluetoothctl connect 52:C5:EC:33:40:58
+```
+
+Then add `WK_BT_SPEAKER=52:C5:EC:33:40:58` to `.env` and run `sudo systemctl restart wortkarten`.
+
+- If the speaker is off or out of range, words play on the headphone jack (`WK_AUDIO_DEVICE`)
+  straight away, without waiting.
+- A background thread retries the connection every 20 s, so switching the speaker back on is
+  enough: it's used again within about half a minute.
+- On a Pi 3B+, Wi-Fi and Bluetooth share one radio. If the sound stutters, Ethernet or a
+  shorter distance to the speaker helps.
+
 ### Zigbee button
 
 In button mode (`WK_MODE=button`), the Pi reads the card only when the button is pressed.
@@ -347,7 +380,8 @@ You can set all of these in `.env`. Restart the service after changing them.
 | `GEMINI_TIMEOUT_MS` | `15000` | Give up on a model after this many ms |
 | `WK_VOICE` | `de-DE-KatjaNeural` | German voice. List them with `./venv/bin/edge-tts --list-voices \| grep de-DE` |
 | `WK_VOICE_RATE` | `-15%` | Speaking speed; slightly slower suits kids |
-| `WK_AUDIO_DEVICE` | *(system default)* | ALSA device for mpg123, e.g. `hw:0,0` |
+| `WK_AUDIO_DEVICE` | *(system default)* | Wired ALSA device for mpg123, e.g. `hw:0,0`. Also used as the fallback when the Bluetooth speaker is unavailable |
+| `WK_BT_SPEAKER` | *(empty)* | MAC address of the paired Bluetooth speaker, e.g. `52:C5:EC:33:40:58` |
 | `WK_CAMERA_TUNING` | `ov5647_noir.json` | Camera colour tuning. Leave it empty for a standard (non-IR) camera |
 | `WK_TARGET_BRIGHTNESS` | `110` | Average brightness (0–255) that the app's own auto-exposure aims for. Lower it if pictures look washed out |
 | `WK_SAVE_CAPTURES` | `1` | Save every card photo to `captures/`. Set it to `0` to turn this off |
@@ -378,6 +412,7 @@ You can set all of these in `.env`. Restart the service after changing them.
 | It ignores the card | The card is too far away or not inside the zone. Check with `--snapshot`, look for "Ignored: … covers X%" in the log, and lower `WK_MIN_COVER` if needed. |
 | The button does nothing | Run `mosquitto_sub -t 'zigbee2mqtt/#' -v` and press it. If nothing appears, it's a zigbee2mqtt or pairing problem. If messages appear on a different topic, set `WK_BUTTON_TOPICS`. Also check `WK_MODE=button`. |
 | No sound | `alsamixer` (volume), `aplay -l` (devices), `WK_AUDIO_DEVICE`. |
+| Sound comes from the jack, not the speaker | Is the speaker on? Run `bluetoothctl info <MAC>` and check for `Connected: yes`. The log shows "Bluetooth speaker connected / not available". If `bluetoothctl power on` fails, run `sudo rfkill unblock bluetooth`. |
 
 ---
 
@@ -392,6 +427,6 @@ You can set all of these in `.env`. Restart the service after changing them.
 
 - [x] Detection zone, plus staying quiet when there's no card
 - [x] Button mode (Zigbee via zigbee2mqtt / MQTT)
-- [ ] Bluetooth speaker
+- [x] Bluetooth speaker, falling back to the headphone jack
 - [ ] Quiz mode („Wie macht die Kuh?") using the words in `gelernte_woerter.jsonl`
 - [ ] Listening to the child's spoken answer (speech-to-text)

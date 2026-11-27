@@ -142,6 +142,7 @@ def run_button(recognizer: Recognizer, watcher) -> None:
 def run_camera() -> None:
     from camera import CardWatcher  # imported here so --image works without a camera
 
+    speaker.start_bluetooth()  # connects in the background while the camera starts
     recognizer = Recognizer()
     watcher = CardWatcher()
     log.info("Mode: %s", config.MODE)

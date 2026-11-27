@@ -1,6 +1,6 @@
 [Unit]
 Description=Wortkarten - German picture-card reader
-After=network-online.target sound.target mosquitto.service
+After=network-online.target sound.target mosquitto.service bluetooth.service bluealsa.service
 Wants=network-online.target
 
 [Service]
