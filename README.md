@@ -39,6 +39,10 @@ There are two modes (`WK_MODE`):
    labels in other languages are translated (a card saying "Yellow" becomes *Gelb*). Gemini
    returns JSON such as
    `{"text": "Kuh", "quelle": "text", "wort": "Kuh", "artikel": "die", "englisch": "cow"}`.
+   **Toy figures and objects** work too: when no card is shown but a hand holds something up
+   (a toy cow, a ball, a spoon), Gemini names it with the simple word a child would learn
+   ("die Kuh", not "die Spielzeugkuh"), with `"quelle": "objekt"`. Things that are just lying
+   around in the background are ignored; only what a hand holds counts.
    If one model is busy, the next one in the list is tried.
 3. **`tts.py`** turns the text into German speech with **ElevenLabs** (voice "Sarah", model v3),
    which sounds the most human. If there's no ElevenLabs key, or it fails (offline, free
@@ -455,5 +459,6 @@ You can set all of these in `.env`. Restart the service after changing them.
 - [x] Detection zone, plus staying quiet when there's no card
 - [x] Button mode (Zigbee via zigbee2mqtt / MQTT)
 - [x] Bluetooth speaker, falling back to the headphone jack
+- [x] Toy figures and objects held up to the camera
 - [ ] Quiz mode („Wie macht die Kuh?") using the words in `gelernte_woerter.jsonl`
 - [ ] Listening to the child's spoken answer (speech-to-text)

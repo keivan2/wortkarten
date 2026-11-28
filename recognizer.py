@@ -1,4 +1,4 @@
-"""Ask Gemini what is shown on a picture card, answered in German."""
+"""Ask Gemini what is shown on a picture card (or a toy figure / object), answered in German."""
 import json
 import logging
 from dataclasses import dataclass
@@ -10,34 +10,45 @@ import config
 
 log = logging.getLogger(__name__)
 
-PROMPT = """Ein kleines Kind hält eine Lernkarte vor eine Kamera.
-Die Karten haben ein Bild und darunter den Namen als gedruckten Text
+PROMPT = """Ein kleines Kind hält eine Lernkarte, eine Spielfigur oder einen Gegenstand
+vor eine Kamera und möchte das deutsche Wort dafür hören.
+Die Lernkarten haben ein Bild und darunter den Namen als gedruckten Text
 (z. B. ein Farbklecks mit "Rot" darunter, oder eine Kuh mit "Kuh" darunter).
 Das Foto kann gedreht, schräg oder leicht unscharf sein.
-Ignoriere die Hand, das Kind und den Hintergrund – nur die Karte zählt.
 
-1. Lies zuerst den gedruckten Text auf der Karte. Der Text ist die richtige Antwort,
-   auch wenn das Bild etwas anderes zu zeigen scheint.
-   - Ist der Text deutsch, übernimm ihn genau (nur Groß-/Kleinschreibung korrigieren).
-   - Ist er in einer anderen Sprache, übersetze ihn ins Deutsche.
-   - Steht schon ein Artikel dabei ("die Kuh"), trenne ihn in "artikel" und "wort".
-2. Nur wenn kein Text lesbar ist: bestimme das Motiv aus dem Bild.
+A) Wenn eine Lernkarte zu sehen ist (gehalten oder nicht): nur die Karte zählt.
+   1. Lies zuerst den gedruckten Text auf der Karte. Der Text ist die richtige Antwort,
+      auch wenn das Bild etwas anderes zu zeigen scheint.
+      - Ist der Text deutsch, übernimm ihn genau (nur Groß-/Kleinschreibung korrigieren).
+      - Ist er in einer anderen Sprache, übersetze ihn ins Deutsche.
+      - Steht schon ein Artikel dabei ("die Kuh"), trenne ihn in "artikel" und "wort".
+   2. Nur wenn kein Text lesbar ist: bestimme das Motiv aus dem Bild.
+B) Wenn keine Karte, aber eine Hand eine Spielfigur, ein Spielzeug oder einen Gegenstand
+   in die Kamera hält: benenne ihn mit dem
+   einfachen Wort, das ein Kind lernen würde ("Kuh" für eine Spielzeugkuh, nicht
+   "Spielzeugkuh"; "Löffel", "Ball", "Teddybär").
+   Bei Gegenständen zählt nur, was eine Hand hält. Andere Dinge, die herumliegen oder
+   herumstehen (Kabel, Geräte, Möbel), sind Hintergrund, auch wenn sie nah und groß sind.
+   Lernkarten zählen dagegen immer, auch wenn keine Hand zu sehen ist.
+Ignoriere immer die Hand, das Kind, Möbel, den Raum und alles im Hintergrund.
 
 Antworte NUR mit JSON in genau diesem Format:
 {"gefunden": true, "text": "Kuh", "quelle": "text", "wort": "Kuh", "artikel": "die", "englisch": "cow"}
 - "text": der Text genau so, wie er auf der Karte steht ("" wenn keiner lesbar ist).
-- "quelle": "text" wenn die Antwort vom gedruckten Text kommt, sonst "bild".
+- "quelle": "text" wenn die Antwort vom gedruckten Text kommt, "bild" wenn vom Bild der
+  Karte, "objekt" bei einer Figur oder einem Gegenstand.
 - "wort": das deutsche Wort, großgeschrieben, Substantive im Singular.
 - "artikel": der, die oder das; bei Farben, Zahlen und Buchstaben leer: "".
-- Wenn gar keine Lernkarte zu sehen ist (nur Person, Hand, Möbel, Raum ...):
+- Wenn weder eine Lernkarte noch ein gehaltener Gegenstand zu sehen ist (nur Person,
+  leere Hand, herumliegende Dinge, Möbel, Raum ...):
   {"gefunden": false, "karte": false}
-- Wenn eine Karte zu sehen ist, du sie aber nicht erkennen kannst:
+- Wenn eine Karte oder ein Gegenstand zu sehen ist, du ihn aber nicht erkennen kannst:
   {"gefunden": false, "karte": true}
 """
 
 
 class NoCard:
-    """Gemini saw no card at all in the photo (something else triggered the camera)."""
+    """Nothing is held up to the camera (something else triggered it, or an empty press)."""
 
 
 @dataclass
@@ -46,7 +57,7 @@ class Result:
     article: str
     english: str
     text: str = ""      # text as printed on the card
-    source: str = ""    # "text" (read from the card) or "bild" (guessed from the picture)
+    source: str = ""    # "text" (card text), "bild" (card picture) or "objekt" (toy/object)
 
     @property
     def phrase(self) -> str:
